@@ -19,7 +19,6 @@ nim c -r dodgeTheCreeps.nim
 ## Limitations
 * For simplicity collisions are just circles instead of implementing capsules
 * Game over/Restart menu is keyboard only
-* Music is not (yet) implemented
 
 ## Copying
 

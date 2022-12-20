@@ -1,4 +1,5 @@
-import sdl2, sdl2/image, sdl2/ttf
+import sdl2
+import sdl2/[image, ttf, mixer, audio]
 import std/math
 import std/lists
 import std/random
@@ -6,11 +7,16 @@ import ./vectors
 const
   GameWidth = 480
   GameHeight = 720
+
+  SpawnInterval = 0.5
+  ScoreInterval = 1
+
   PlayerSpeed = 400
+  PlayerRadius = 20
+
   EnemySpeed = 200
-  SpawnInterval = 1
-  PlayerRadius = 20 # TODO: Make sure this is correct
-  EnemyRadius = 40  # TODO: Make sure this is correct
+  EnemyRadius = 40
+  EnemyAngleVariance = 45
 
 sdl2.init(INIT_EVERYTHING)
 ttfInit()
@@ -19,14 +25,21 @@ var
   window = "Dodge the Creeps".createWindow(
     SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
     480, 720,
-    SDL_WINDOW_SHOWN,
-  )
+    SDL_WINDOW_SHOWN or SDL_WINDOW_RESIZABLE)
   renderer = window.createRenderer(
     -1,
     Renderer_Accelerated or
     Renderer_PresentVsync or
-    Renderer_TargetTexture,
-  )
+    Renderer_TargetTexture)
+
+template sdlAssert(statement: untyped, msg: string) =
+  if not (statement):
+    echo msg, ": ", getError()
+    quit 1
+
+sdlAssert renderer.setLogicalSize(GameWidth, GameHeight) == 0, "Failed to set logical size"
+
+sdlAssert openAudio(44100, AUDIO_F32, 2, 4096) == 0, "Failed to open audio"
 
 type
   Input {.pure.} = enum none, left, right, up, down, restart
@@ -56,34 +69,40 @@ type
     player: Player
     enemies: DoublyLinkedList[Enemy]
     enemySpawnTimer: float32
+    scoreTimer: float32
+    startTimer: float32 # Time after the start of the game
+    endTimer: float32   # Time after end of game
 
-var player_animations: array[Animation, seq[TexturePtr]]
+var animation_frames: array[Animation, seq[TexturePtr]]
 
 # Load animation frames
-player_animations[Animation.playerWalk] = @[
+animation_frames[Animation.playerWalk] = @[
   renderer.loadTexture("art/playerGrey_walk1.png"),
   renderer.loadTexture("art/playerGrey_walk2.png")]
-player_animations[Animation.playerUp] = @[
+animation_frames[Animation.playerUp] = @[
   renderer.loadTexture("art/playerGrey_up1.png"),
   renderer.loadTexture("art/playerGrey_up2.png")]
-player_animations[Animation.enemyFlying] = @[
+animation_frames[Animation.enemyFlying] = @[
   renderer.loadTexture("art/enemyFlyingAlt_1.png"),
   renderer.loadTexture("art/enemyFlyingAlt_2.png")]
-player_animations[Animation.enemySwimming] = @[
+animation_frames[Animation.enemySwimming] = @[
   renderer.loadTexture("art/enemySwimming_1.png"),
   renderer.loadTexture("art/enemySwimming_2.png")]
-player_animations[Animation.enemyWalking] = @[
+animation_frames[Animation.enemyWalking] = @[
   renderer.loadTexture("art/enemyWalking_1.png"),
   renderer.loadTexture("art/enemyWalking_2.png")]
 
+template frames(a: Animation): untyped =
+  animation_frames[a]
+
 # Load font
 let font = "fonts/Xolonium-Regular.ttf".openFont 64
-if font.isNil:
-  echo getError()
-  quit 1
+sdlAssert not font.isNil, "Failed to open font"
 
-template frames(a: Animation): untyped =
-  player_animations[a]
+# Load audio
+let
+  gameover = "art/gameover.wav".loadWAV
+  music = "art/House In a Forest Loop.ogg".loadMUS
 
 proc toInput(s: Scancode): Input =
   case s:
@@ -94,28 +113,25 @@ proc toInput(s: Scancode): Input =
   of SDL_SCANCODE_RETURN: Input.restart
   else: Input.none
 
-proc newPlayer(x, y: float32): Player =
-  Player(
-    dead: false,
-    position: (x, y),
-    animation: AnimationPlayer(
-      fps: 5,
-      scale: 0.5,
-      animation: playerWalk))
+proc newPlayer(x, y: float32): Player = Player(
+  dead: false,
+  position: (x, y),
+  animation: AnimationPlayer(
+    fps: 5,
+    scale: 0.5,
+    animation: playerWalk))
 
-proc newEnemy(x, y, theta: float32): Enemy =
-  Enemy(
-    position: (x, y),
-    angle: theta,
-    animation: AnimationPlayer(
-      playing: true,
-      fps: 3,
-      scale: 0.75,
-      animation: (enemyFlying..enemyWalking).rand))
+proc newEnemy(x, y, theta: float32): Enemy = Enemy(
+  position: (x, y),
+  angle: theta,
+  animation: AnimationPlayer(
+    playing: true,
+    fps: 3,
+    scale: 0.75,
+    animation: (enemyFlying..enemyWalking).rand))
 
-proc newGame(): Game =
-  Game(
-    player: newPlayer(GameWidth/2, GameHeight/2))
+proc newGame(): Game = Game(
+  player: newPlayer(GameWidth/2, 540))
 
 
 template getFrame(animation: seq[TexturePtr], dt: float32,
@@ -131,9 +147,8 @@ proc draw(r: RendererPtr, t: TexturePtr, x, y: cint,
   w = cint(w.float32 * scale)
   h = cint(h.float32 * scale)
   let textureRect = rect(
-    x - (w div 2), y - (w div 2),
-    w, h,
-  )
+    x - (w div 2), y - (h div 2),
+    w, h)
   r.copyEx(t, nilRect, textureRect.unsafeAddr, cdouble(theta), nilPoint, flip)
 
 proc draw(r: RendererPtr, a: AnimationPlayer, x, y: cint, theta = 0.float32) =
@@ -154,26 +169,42 @@ proc draw(r: RendererPtr, e: Enemy) =
 
 proc draw(r: RendererPtr, text: cstring, x, y: cint) =
   let textSurface = font.renderTextSolid(text, color(255, 255, 255, 255))
-  if textSurface.isNil:
-    echo "Bad render"
+  sdlAssert not textSurface.isNil, "Failed to render text"
   let textTexture = r.createTextureFromSurface(textSurface)
   r.draw(textTexture, x, y)
   textSurface.freeSurface
   textTexture.destroy
 
 proc draw(r: RendererPtr, g: Game) =
+  # Background
+  r.setDrawColor 0x38, 0x5f, 0x61, 0xff
+  var bgRect = rect(0, 0, GameWidth, GameHeight)
+  r.fillRect(bgRect)
+
+  # Score
   r.draw ($g.score).cstring, GameWidth div 2, 50
+
+  # "Entities"
   r.draw g.player
   for enemyNode in g.enemies.nodes:
     r.draw enemyNode.value
+
+  # HUD
   if g.over:
-    r.draw "Game Over", GameWidth div 2, GameHeight div 2
-    r.draw "Press Enter", GameWidth div 2, 3*GameHeight div 4
-    r.draw "to restart", GameWidth div 2, 3*GameHeight div 4 + 64
+    if g.endTimer < 2:
+      r.draw "Game Over", GameWidth div 2, GameHeight div 2
+    else:
+      r.draw "Dodge the", GameWidth div 2, GameHeight div 2
+      r.draw "creeps!", GameWidth div 2, GameHeight div 2 + 64
+
+    if g.endTimer > 3:
+      r.draw "Press Enter", GameWidth div 2, 3*GameHeight div 4
+      r.draw "to restart", GameWidth div 2, 3*GameHeight div 4 + 64
+  elif g.startTimer < 2:
+    r.draw "Get ready!", GameWidth div 2, GameHeight div 2
 
 proc update(a: AnimationPlayer, dt: float32) =
-  if a.playing:
-    a.time += dt
+  if a.playing: a.time += dt
 
 template pressed (g: Game, key: untyped): bool =
   g.inputs[Input.key]
@@ -181,10 +212,12 @@ template pressed (g: Game, key: untyped): bool =
 template clip(a, lower, upper: float32) =
   if a < lower:
     a = lower
-  if a > upper:
+  elif a > upper:
     a = upper
 
 proc update(p: Player, g: Game, dt: float32) =
+  if p.dead: return
+
   # Compute the direction vector
   var delta = (0.float32, 0.float32).Vector2
   if g.pressed left:
@@ -201,6 +234,14 @@ proc update(p: Player, g: Game, dt: float32) =
   p.position += delta * dt * PlayerSpeed
   p.position.x.clip 0, GameWidth
   p.position.y.clip 0, GameHeight
+
+  # Collision check
+  for enemy in g.enemies.items:
+    if (g.player.position - enemy.position).length < EnemyRadius + PlayerRadius:
+      g.player.dead = true
+      g.over = true
+      discard playChannel(-1, gameover, 0)
+      break
 
   # Update animation parameters and frame time
   p.animation.playing = delta.length != 0
@@ -235,7 +276,7 @@ proc update(e: Enemy, dt: float32) =
 proc spawnEnemy(g: Game) =
   template addEnemy(x, y, theta) =
     g.enemies.add newDoublyLinkedNode[Enemy](
-      newEnemy(x, y, theta + (-20.float32..20.float32).rand))
+      newEnemy(x, y, theta + (-EnemyAngleVariance.float32..EnemyAngleVariance.float32).rand))
 
   var position = (0..(GameWidth+GameHeight)*2).rand
   if position < GameWidth:
@@ -254,24 +295,35 @@ proc spawnEnemy(g: Game) =
 
 
 proc update(g: Game, dt: float32) =
+  g.startTimer += dt
+
   for node in g.enemies.nodes:
     if node.value.remove:
       g.enemies.remove node
     else:
       node.value.update dt
 
-      # Collision check
-      if (g.player.position - node.value.position).length < EnemyRadius + PlayerRadius:
-        g.player.dead = true
-        g.over = true
-
-  if g.over: return # The rest should be ignored past the end of the game
   g.player.update g, dt
-  g.enemySpawnTimer += dt
-  if g.enemySpawnTimer > SpawnInterval:
-    g.spawnEnemy
-    g.enemySpawnTimer -= SpawnInterval
-    g.score += 1
+
+  if g.over:
+    g.endTimer += dt
+    if playingMusic().bool:
+      discard haltMusic()
+    return # The rest should be ignored past the end of the game
+
+  if not playingMusic().bool:
+    sdlAssert music.playMusic(-1) == 0, "Playing music failed"
+
+  if g.startTimer > 2:
+    g.enemySpawnTimer += dt
+    if g.enemySpawnTimer > SpawnInterval:
+      g.spawnEnemy
+      g.enemySpawnTimer -= SpawnInterval
+
+    g.scoreTimer += dt
+    if g.scoreTimer > ScoreInterval:
+      g.scoreTimer -= ScoreInterval
+      g.score += 1
 
 var
   game = newGame()
@@ -287,7 +339,9 @@ while true:
   dt = (time-prevTime).float32/getPerformanceFrequency().float32
   while event.pollEvent:
     case event.kind:
-    of QuitEvent: quit 0
+    of QuitEvent:
+      mixer.closeAudio()
+      quit 0
     of KeyDown:
       let input = event.key.keysym.scancode.toInput
       game.inputs[input] = true
@@ -296,8 +350,7 @@ while true:
     of KeyUp: game.inputs[event.key.keysym.scancode.toInput] = false
     else: discard
 
-  # Background
-  renderer.setDrawColor 0x38, 0x5f, 0x61, 0xff
+  renderer.setDrawColor 0, 0, 0, 255
   renderer.clear
 
   renderer.draw game
