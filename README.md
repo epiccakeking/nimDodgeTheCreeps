@@ -9,9 +9,9 @@ Assuming you have the nim compiler installed:
 2. cd into the repository
 3. compile/run dodgeTheCreeps.nim
 
-
+In commands:
 ```
-https://github.com/epiccakeking/nimDodgeTheCreeps.git
+git clone https://github.com/epiccakeking/nimDodgeTheCreeps.git
 cd nimDodgeTheCreeps
 nim c -r dodgeTheCreeps.nim
 ```
@@ -19,7 +19,7 @@ nim c -r dodgeTheCreeps.nim
 ## Limitations
 * For simplicity collisions are just circles instead of implementing capsules
 * Game over/Restart menu is keyboard only
-* Music is not implemented
+* Music is not (yet) implemented
 
 ## Copying
 
