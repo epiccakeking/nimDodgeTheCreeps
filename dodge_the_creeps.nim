@@ -15,6 +15,7 @@ const
   EnemySpeed = 200
   EnemyRadius = 40
   EnemyAngleVariance = 45
+  RestartRect = rect(GameWidth div 2-100, 3*GameHeight div 4 - 50, 200, 100)
 
 let appDir = getAppDir()
 
@@ -72,6 +73,7 @@ type
     scoreTimer: float32
     startTimer: float32 # Time after the start of the game
     endTimer: float32   # Time after end of game
+    showRestart: bool
 
 var animation_frames: array[Animation, seq[TexturePtr]]
 
@@ -197,12 +199,16 @@ proc draw(r: RendererPtr, g: Game) =
     if g.endTimer < 2:
       r.draw "Game Over", GameWidth div 2, GameHeight div 2
     else:
-      r.draw "Dodge the", GameWidth div 2, GameHeight div 2
-      r.draw "creeps!", GameWidth div 2, GameHeight div 2 + 64
+      r.draw "Dodge the", GameWidth div 2, GameHeight div 2 - 32
+      r.draw "creeps!", GameWidth div 2, GameHeight div 2 + 32
 
     if g.endTimer > 3:
-      r.draw "Press Enter", GameWidth div 2, 3*GameHeight div 4
-      r.draw "to restart", GameWidth div 2, 3*GameHeight div 4 + 64
+      r.setDrawColor 0, 0, 0, 0x44
+      var rect = new Rect
+      rect[] = RestartRect
+      r.fillRect addr rect[]
+      g.showRestart = true
+      r.draw "Start", GameWidth div 2, 3*GameHeight div 4
   elif g.startTimer < 2:
     r.draw "Get ready!", GameWidth div 2, GameHeight div 2
 
@@ -333,9 +339,15 @@ var
   time, prevTime: uint64
   dt: float32
 
+# Hacky main screen is just the end screen
+game.over = true
+game.player.dead = true
+game.endTimer = 4
+
 randomize()
 time = getPerformanceCounter()
 var event = defaultEvent
+var mousePosition: Point
 while true:
   prevTime = time
   time = getPerformanceCounter()
@@ -344,6 +356,8 @@ while true:
     case event.kind:
     of QuitEvent:
       mixer.closeAudio()
+      renderer.destroyRenderer
+      window.destroyWindow
       quit 0
     of KeyDown:
       let input = event.key.keysym.scancode.toInput
@@ -351,6 +365,13 @@ while true:
       if input == restart and game.over:
         game = newGame()
     of KeyUp: game.inputs[event.key.keysym.scancode.toInput] = false
+    of MouseButtonDown:
+      if event.evMouseButton.button == 1 and game.showRestart and
+          RestartRect.contains mousePosition:
+        game = newGame()
+    of MouseMotion:
+      mousePosition.x = event.evMouseMotion.x
+      mousePosition.y = event.evMouseMotion.y
     else: discard
 
   renderer.setDrawColor 0, 0, 0, 255

@@ -2,6 +2,8 @@
 
 This is a port of [Dodge the Creeps](https://docs.godotengine.org/en/latest/getting_started/first_2d_game/index.html) to Nim/SDL2.
 
+The full game works (though colliders are somewhat simplified)
+
 ## Running
 With nimble:
 1. Clone the repository
@@ -14,10 +16,6 @@ git clone https://github.com/epiccakeking/nimDodgeTheCreeps.git
 cd nimDodgeTheCreeps
 nimble run
 ```
-
-## Limitations
-* For simplicity collisions are just circles instead of implementing capsules
-* Game over/Restart menu is keyboard only
 
 ## Copying
 
