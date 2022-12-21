@@ -1,8 +1,6 @@
 import sdl2
 import sdl2/[image, ttf, mixer, audio]
-import std/math
-import std/lists
-import std/random
+import std/[math, lists, random, os]
 import ./vectors
 const
   GameWidth = 480
@@ -17,6 +15,8 @@ const
   EnemySpeed = 200
   EnemyRadius = 40
   EnemyAngleVariance = 45
+
+let appDir = getAppDir()
 
 sdl2.init(INIT_EVERYTHING)
 ttfInit()
@@ -75,34 +75,37 @@ type
 
 var animation_frames: array[Animation, seq[TexturePtr]]
 
+template load(relativePath: string): TexturePtr =
+  renderer.loadTexture((appDir / relativePath).cstring)
+
 # Load animation frames
 animation_frames[Animation.playerWalk] = @[
-  renderer.loadTexture("art/playerGrey_walk1.png"),
-  renderer.loadTexture("art/playerGrey_walk2.png")]
+  load "art/playerGrey_walk1.png",
+  load "art/playerGrey_walk2.png"]
 animation_frames[Animation.playerUp] = @[
-  renderer.loadTexture("art/playerGrey_up1.png"),
-  renderer.loadTexture("art/playerGrey_up2.png")]
+  load "art/playerGrey_up1.png",
+  load "art/playerGrey_up2.png"]
 animation_frames[Animation.enemyFlying] = @[
-  renderer.loadTexture("art/enemyFlyingAlt_1.png"),
-  renderer.loadTexture("art/enemyFlyingAlt_2.png")]
+  load "art/enemyFlyingAlt_1.png",
+  load "art/enemyFlyingAlt_2.png"]
 animation_frames[Animation.enemySwimming] = @[
-  renderer.loadTexture("art/enemySwimming_1.png"),
-  renderer.loadTexture("art/enemySwimming_2.png")]
+  load "art/enemySwimming_1.png",
+  load "art/enemySwimming_2.png"]
 animation_frames[Animation.enemyWalking] = @[
-  renderer.loadTexture("art/enemyWalking_1.png"),
-  renderer.loadTexture("art/enemyWalking_2.png")]
+  load "art/enemyWalking_1.png",
+  load "art/enemyWalking_2.png"]
 
 template frames(a: Animation): untyped =
   animation_frames[a]
 
 # Load font
-let font = "fonts/Xolonium-Regular.ttf".openFont 64
+let font = (appDir/"fonts/Xolonium-Regular.ttf").cstring.openFont 64
 sdlAssert not font.isNil, "Failed to open font"
 
 # Load audio
 let
-  gameover = "art/gameover.wav".loadWAV
-  music = "art/House In a Forest Loop.ogg".loadMUS
+  gameover = (appDir/"art/gameover.wav").cstring.loadWAV
+  music = (appDir/"art/House In a Forest Loop.ogg").cstring.loadMUS
 
 proc toInput(s: Scancode): Input =
   case s:

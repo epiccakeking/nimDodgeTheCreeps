@@ -3,17 +3,16 @@
 This is a port of [Dodge the Creeps](https://docs.godotengine.org/en/latest/getting_started/first_2d_game/index.html) to Nim/SDL2.
 
 ## Running
-Assuming you have the nim compiler installed:
-
+With nimble:
 1. Clone the repository
 2. cd into the repository
-3. compile/run dodgeTheCreeps.nim
+3. Use nimble run
 
 In commands:
 ```
 git clone https://github.com/epiccakeking/nimDodgeTheCreeps.git
 cd nimDodgeTheCreeps
-nim c -r dodgeTheCreeps.nim
+nimble run
 ```
 
 ## Limitations
