@@ -138,6 +138,8 @@ proc newEnemy(x, y, theta: float32): Enemy = Enemy(
 proc newGame(): Game = Game(
   player: newPlayer(GameWidth/2, 540))
 
+proc restart(g: Game) =
+  g[] = newGame()[]
 
 template getFrame(animation: seq[TexturePtr], dt: float32,
     fps: float32): TexturePtr =
@@ -318,6 +320,8 @@ proc update(g: Game, dt: float32) =
     g.endTimer += dt
     if playingMusic().bool:
       discard haltMusic()
+    if g.pressed restart:
+      g.restart
     return # The rest should be ignored past the end of the game
 
   if not playingMusic().bool:
@@ -347,7 +351,6 @@ game.endTimer = 4
 randomize()
 time = getPerformanceCounter()
 var event = defaultEvent
-var mousePosition: Point
 while true:
   prevTime = time
   time = getPerformanceCounter()
@@ -359,25 +362,19 @@ while true:
       renderer.destroyRenderer
       window.destroyWindow
       quit 0
-    of KeyDown:
-      let input = event.key.keysym.scancode.toInput
-      game.inputs[input] = true
-      if input == restart and game.over:
-        game = newGame()
+    of KeyDown: game.inputs[event.key.keysym.scancode.toInput] = true
     of KeyUp: game.inputs[event.key.keysym.scancode.toInput] = false
     of MouseButtonDown:
+      var x, y: cint
+      discard getMouseState(addr x, addr y)
       if event.evMouseButton.button == 1 and game.showRestart and
-          RestartRect.contains mousePosition:
-        game = newGame()
-    of MouseMotion:
-      mousePosition.x = event.evMouseMotion.x
-      mousePosition.y = event.evMouseMotion.y
+          RestartRect.contains point(x, y):
+        game.restart
     else: discard
+
+  game.update dt
 
   renderer.setDrawColor 0, 0, 0, 255
   renderer.clear
-
   renderer.draw game
-  game.update dt
-
   renderer.present
