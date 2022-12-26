@@ -75,30 +75,28 @@ type
     endTimer: float32   # Time after end of game
     showRestart: bool
 
-var animation_frames: array[Animation, seq[TexturePtr]]
-
 template load(relativePath: string): TexturePtr =
-  renderer.loadTexture((appDir / relativePath).cstring)
+  renderer.loadTexture (appDir / relativePath).cstring
 
 # Load animation frames
-animation_frames[Animation.playerWalk] = @[
-  load "art/playerGrey_walk1.png",
-  load "art/playerGrey_walk2.png"]
-animation_frames[Animation.playerUp] = @[
-  load "art/playerGrey_up1.png",
-  load "art/playerGrey_up2.png"]
-animation_frames[Animation.enemyFlying] = @[
-  load "art/enemyFlyingAlt_1.png",
-  load "art/enemyFlyingAlt_2.png"]
-animation_frames[Animation.enemySwimming] = @[
-  load "art/enemySwimming_1.png",
-  load "art/enemySwimming_2.png"]
-animation_frames[Animation.enemyWalking] = @[
-  load "art/enemyWalking_1.png",
-  load "art/enemyWalking_2.png"]
+let animation_frames = [
+  playerWalk: @[
+    load "art/playerGrey_walk1.png",
+    load "art/playerGrey_walk2.png"],
+  playerUp: @[
+    load "art/playerGrey_up1.png",
+    load "art/playerGrey_up2.png"],
+  enemyFlying: @[
+    load "art/enemyFlyingAlt_1.png",
+    load "art/enemyFlyingAlt_2.png"],
+  enemySwimming: @[
+    load "art/enemySwimming_1.png",
+    load "art/enemySwimming_2.png"],
+  enemyWalking: @[
+    load "art/enemyWalking_1.png",
+    load "art/enemyWalking_2.png"]]
 
-template frames(a: Animation): untyped =
-  animation_frames[a]
+template frames(a: Animation): seq[TexturePtr] = animation_frames[a]
 
 # Load font
 let font = (appDir/"fonts/Xolonium-Regular.ttf").cstring.openFont 64
@@ -117,6 +115,9 @@ proc toInput(s: Scancode): Input =
   of SDL_SCANCODE_RIGHT: Input.right
   of SDL_SCANCODE_RETURN: Input.restart
   else: Input.none
+
+proc getMousePosition(): Point =
+  discard getMouseState(result.x, result.y)
 
 proc newPlayer(x, y: float32): Player = Player(
   dead: false,
@@ -205,7 +206,10 @@ proc draw(r: RendererPtr, g: Game) =
       r.draw "creeps!", GameWidth div 2, GameHeight div 2 + 32
 
     if g.endTimer > 3:
-      r.setDrawColor 0, 0, 0, 0x44
+      if RestartRect.contains getMousePosition():
+        r.setDrawColor 0x44, 0x44, 0x55, 255
+      else:
+        r.setDrawColor 0x33, 0x36, 0x44, 255
       var rect = new Rect
       rect[] = RestartRect
       r.fillRect addr rect[]
@@ -365,10 +369,8 @@ while true:
     of KeyDown: game.inputs[event.key.keysym.scancode.toInput] = true
     of KeyUp: game.inputs[event.key.keysym.scancode.toInput] = false
     of MouseButtonDown:
-      var x, y: cint
-      discard getMouseState(addr x, addr y)
       if event.evMouseButton.button == 1 and game.showRestart and
-          RestartRect.contains point(x, y):
+          RestartRect.contains getMousePosition():
         game.restart
     else: discard
 
